@@ -1,8 +1,12 @@
-import type { ReactElement } from './element.js';
+import type {
+  ReactElement
+} from './element.js';
+import type { ProviderType } from './context.js';
 import { scheduleWork } from './scheduler.js';
 import { shouldYield } from './yield.js';
 import {
   type Fiber,
+  type FiberProps,
   Placement,
   Update,
   Deletion,
@@ -40,7 +44,9 @@ function workLoop() {
 }
 
 function performUnitOfWork(fiber: Fiber): Fiber | null {
-  if (typeof fiber.type === 'function') {
+  if (fiber.type && (fiber.type as any).$$typeof === Symbol.for('react.provider')) {
+    updateContextProvider(fiber);
+  } else if (typeof fiber.type === 'function') {
     updateFunctionComponent(fiber);
   } else {
     updateHostComponent(fiber);
@@ -67,31 +73,49 @@ function updateFunctionComponent(fiber: Fiber) {
   reconcileChildren(fiber, children);
 }
 
+function updateContextProvider(fiber: Fiber) {
+  // Update the context value
+  const context = (fiber.type as unknown as ProviderType<any>)._context;
+  context._currentValue = fiber.props.value;
+  // Reconcile children
+  if(fiber.props.children !== undefined) {
+    reconcileChildren(fiber, fiber.props.children);
+  }
+}
+
 function updateHostComponent(fiber: Fiber) {
   if (!fiber.dom) {
     fiber.dom = createDom(fiber);
   }
-  reconcileChildren(fiber, fiber.props.children);
+  if(fiber.props.children !== undefined) {
+    reconcileChildren(fiber, fiber.props.children);
+  }
 }
 
-function reconcileChildren(wipFiber: Fiber, elements: any[]) {
+function reconcileChildren(wipFiber: Fiber, elements: (ReactElement | string)[] | ReactElement | string) {
   let index = 0;
   let oldFiber = wipFiber.alternate && wipFiber.alternate.child;
   let prevSibling: Fiber | null = null;
 
-  while (index < elements.length || oldFiber != null) {
-    const element = elements[index];
+  const normalizedElements = Array.isArray(elements) ? elements : [elements];
+
+  while (index < normalizedElements.length || oldFiber != null) {
+    const element = normalizedElements[index];
     let newFiber: Fiber | null = null;
 
     const sameType =
       oldFiber &&
       element &&
-      element.type === oldFiber.type;
+      (typeof element === 'string' ? 
+        oldFiber.type === 'TEXT_ELEMENT' :
+        element.type === oldFiber.type);
 
     if (sameType) {
       newFiber = {
         type: oldFiber!.type,
-        props: element.props,
+        props: typeof element === 'string' ?
+          { nodeValue: element, children: [] } as FiberProps :
+          element.props,
         dom: oldFiber!.dom,
         parent: wipFiber,
         alternate: oldFiber,
@@ -102,7 +126,12 @@ function reconcileChildren(wipFiber: Fiber, elements: any[]) {
       };
     }
     if (element && !sameType) {
-      newFiber = createFiber(element.type, element.props);
+      newFiber = createFiber(
+        typeof element === 'string' ? 'TEXT_ELEMENT' : element.type,
+        typeof element === 'string' ?
+          { nodeValue: element, children: [] } as FiberProps :
+          element.props
+      );
       newFiber.effectTag = Placement;
       newFiber.parent = wipFiber;
     }
@@ -125,16 +154,29 @@ function reconcileChildren(wipFiber: Fiber, elements: any[]) {
     index++;
   }
 }
+function createDom(fiber: Fiber): Element | Text | null {
+  if (typeof fiber.type === 'string') {
+    const dom =
+      fiber.type === 'TEXT_ELEMENT'
+        ? document.createTextNode('')
+        : document.createElement(fiber.type);
 
-function createDom(fiber: Fiber): Element | Text {
-  const dom =
-    fiber.type === 'TEXT_ELEMENT'
-      ? document.createTextNode('')
-      : document.createElement(fiber.type as string);
-
-  updateDom(dom, {}, fiber.props);
-
-  return dom;
+    updateDom(dom, {}, fiber.props);
+    return dom;
+  } else if (typeof fiber.type === 'function') {
+    // Function components don't have a direct DOM representation
+    return null;
+  } else if (fiber.type && (fiber.type as any).$$typeof === Symbol.for('react.provider')) {
+    // Context Providers don't have a direct DOM representation
+    debugger
+    return null;
+  } else if (fiber.type && (fiber.type as any).$$typeof === Symbol.for('react.context')) {
+    // Context Consumers don't have a direct DOM representation
+    return null;
+  } else {
+    console.warn('Unknown fiber type:', fiber.type);
+    return null;
+  }
 }
 
 function updateDom(dom: Element | Text, prevProps: any, nextProps: any) {

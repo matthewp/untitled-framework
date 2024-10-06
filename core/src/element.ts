@@ -1,7 +1,17 @@
+import type { Context } from './context.js';
+
 const REACT_ELEMENT_TYPE = Symbol.for('react.element');
 
 // TODO this is not right
-type ComponentType<T> = unknown;
+interface FunctionComponent<T> {
+  (
+    props: T
+  ): ReactNode;
+
+  displayName?: string;
+}
+
+type ComponentType<T> = FunctionComponent<T>;
 
 // Define types for props and config
 type Props = { [key: string]: any };
@@ -15,7 +25,7 @@ type Config = Props & {
 // Define the structure of a React Element
 interface ReactElement {
   $$typeof: symbol;
-  type: string | ComponentType<any>;
+  type: string | ComponentType<any> | Context<any>;
   key: string | null;
   ref: any;
   props: Props;
@@ -97,6 +107,7 @@ function createElement(
 }
 
 export {
+  type FunctionComponent,
   type ReactElement,
   createElement,
 }

@@ -54,5 +54,6 @@ function createContext<T>(defaultValue: T): ReactContext<T> {
 
 export {
   type ReactContext as Context,
+  type ReactProviderType as ProviderType,
   createContext
 };

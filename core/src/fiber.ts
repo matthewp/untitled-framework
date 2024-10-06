@@ -1,5 +1,9 @@
 import type { AnyHook } from './hooks.js';
-import type { ReactElement } from './element.js';
+import type {
+  FunctionComponent,
+  ReactElement
+} from './element.js';
+import type { Context } from './context.js';
 
 // Effect tags
 const Placement = 'PLACEMENT';
@@ -7,7 +11,7 @@ const Update = 'UPDATE';
 const Deletion = 'DELETION';
 
 interface Fiber {
-  type: string | Function;
+  type: string | FunctionComponent<any> | Context<any>;
   props: FiberProps;
   dom: Element | Text | null;
   parent: Fiber | null;
@@ -32,7 +36,11 @@ interface FiberProps {
 }
 
 // Shared utility functions
-function createFiber(type: string | Function, props: FiberProps, dom: Element | Text | null = null): Fiber {
+function createFiber(
+  type: string | FunctionComponent<any> | Context<any>,
+  props: FiberProps,
+  dom: Element | Text | null = null
+): Fiber {
   return {
     type,
     props,
@@ -46,7 +54,7 @@ function createFiber(type: string | Function, props: FiberProps, dom: Element | 
   };
 }
 
-function scheduleUpdate(fiber: Fiber) {
+function scheduleUpdate(_fiber: Fiber) {
   wipRoot = createFiber(currentRoot!.type, currentRoot!.props, currentRoot!.dom);
   wipRoot.alternate = currentRoot;
   nextUnitOfWork = wipRoot;
@@ -75,6 +83,7 @@ function setHookIndex(index: number) {
 
 export {
   type Fiber,
+  type FiberProps,
   Placement,
   Update,
   Deletion,
