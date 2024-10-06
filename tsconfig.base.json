@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "customConditions": ["typescript"],
+    "strict": true,
+    "moduleResolution": "Bundler",
+    "module": "ESNext",
+    "resolvePackageJsonExports": true,
+    "target": "ES2022",
+    "jsx": "react-jsx",
+    "jsxImportSource": "@matthewp/untitled-framework"
+  }
+}

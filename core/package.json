@@ -1,0 +1,53 @@
+{
+  "name": "@matthewp/untitled-framework",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "wireit",
+    "build": "wireit"
+  },
+  "exports": {
+    ".": {
+      "typescript": "./src/index.ts",
+     "default": "./dist/index.js"
+    },
+    "./dom": {
+      "typescript": "./src/dom.ts",
+      "default": "./dist/dom.js"
+    },
+    "./jsx-runtime": {
+      "typescript": "./src/jsx-runtime.ts",
+      "default": "./dist/jsx-runtime.js"
+    },
+    "./jsx-dev-runtime": {
+      "typescript": "./src/jsx-runtime.ts",
+      "default": "./dist/jsx-runtime.js"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4"
+  },
+  "dependencies": {
+    "@radix-ui/themes": "^3.1.4"
+  },
+  "wireit": {
+    "build": {
+      "command": "tsc -p tsconfig.json",
+      "files": [
+        "src/**/*"
+      ],
+      "output": [
+        "dist"
+      ]
+    },
+    "dev": {
+      "command": "tsc -p tsconfig.json --watch",
+      "service": {
+        "readyWhen": {
+          "lineMatches": "Watching for file changes."
+        }
+      }
+    }
+  }
+}
