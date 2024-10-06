@@ -1,4 +1,5 @@
-import { AnyHook } from './hooks.js';
+import type { AnyHook } from './hooks.js';
+import type { ReactElement } from './element.js';
 
 // Effect tags
 const Placement = 'PLACEMENT';
@@ -7,7 +8,7 @@ const Deletion = 'DELETION';
 
 interface Fiber {
   type: string | Function;
-  props: any;
+  props: FiberProps;
   dom: Element | Text | null;
   parent: Fiber | null;
   child: Fiber | null;
@@ -25,8 +26,13 @@ let deletions: Fiber[] = [];
 let wipFiber: Fiber | null = null;
 let hookIndex: number = 0;
 
+interface FiberProps {
+  children?: ReactElement[] | string;
+  [key: string]: any;  // For other properties and event handlers
+}
+
 // Shared utility functions
-function createFiber(type: string | Function, props: any, dom: Element | Text | null = null): Fiber {
+function createFiber(type: string | Function, props: FiberProps, dom: Element | Text | null = null): Fiber {
   return {
     type,
     props,
