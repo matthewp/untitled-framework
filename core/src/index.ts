@@ -1,5 +1,7 @@
+import { Children } from './children.js';
 import { createContext } from './context.js';
-import { createElement } from './element.js';
+import { cloneElement, createElement, isValidElement } from './element.js';
+import { Fragment } from './fragment.js';
 import { forwardRef } from './ref.js';
 import {
   useCallback,
@@ -8,10 +10,12 @@ import {
   useLayoutEffect,
   useMemo,
   useContext,
+  useReducer,
   useRef
 } from './hooks.js';
 
 const Framework = {
+  Children,
   createElement,
   forwardRef,
   createContext
@@ -20,15 +24,20 @@ const Framework = {
 export {
   Framework as default,
 
+  Children,
+  cloneElement,
   createElement,
   forwardRef,
+  Fragment,
   createContext,
+  isValidElement,
 
   useEffect,
   useCallback,
   useContext,
   useLayoutEffect,
   useMemo,
+  useReducer,
   useRef,
   useState
 };

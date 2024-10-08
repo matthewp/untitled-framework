@@ -4,6 +4,7 @@ import type {
   ReactElement
 } from './element.js';
 import type { Context } from './context.js';
+import { isCommitting, pendingUpdates } from './reconcile.js';
 
 // Effect tags
 const Placement = 'PLACEMENT';
@@ -20,6 +21,7 @@ interface Fiber {
   alternate: Fiber | null;
   effectTag: string | null;
   hooks: AnyHook[] | null;
+  ref: any;
 }
 
 // Shared variables
@@ -39,11 +41,13 @@ interface FiberProps {
 function createFiber(
   type: string | FunctionComponent<any> | Context<any>,
   props: FiberProps,
-  dom: Element | Text | null = null
+  dom: Element | Text | null = null,
+  ref: any = null
 ): Fiber {
   return {
     type,
     props,
+    ref,
     dom,
     parent: null,
     child: null,
@@ -54,11 +58,15 @@ function createFiber(
   };
 }
 
-function scheduleUpdate(_fiber: Fiber) {
-  wipRoot = createFiber(currentRoot!.type, currentRoot!.props, currentRoot!.dom);
-  wipRoot.alternate = currentRoot;
-  nextUnitOfWork = wipRoot;
-  deletions = [];
+function scheduleUpdate(fiber: Fiber) {
+  if(isCommitting) {
+    pendingUpdates.push(fiber);
+  } else {
+    wipRoot = createFiber(currentRoot!.type, currentRoot!.props, currentRoot!.dom);
+    wipRoot.alternate = currentRoot;
+    nextUnitOfWork = wipRoot;
+    deletions = [];
+  }
 }
 
 function setNextUnitOfWork(fiber: Fiber | null) {

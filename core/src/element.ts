@@ -106,8 +106,83 @@ function createElement(
   };
 }
 
+function isValidElement(object: any): object is ReactElement {
+  return (
+    typeof object === 'object' &&
+    object !== null &&
+    object.$$typeof === REACT_ELEMENT_TYPE
+  );
+}
+
+function cloneElement(
+  element: ReactElement,
+  config: Config | null,
+  ...children: ReactNode[]
+): ReactElement {
+  if (!isValidElement(element)) {
+    throw new Error('cloneElement: not a valid React element.');
+  }
+
+  let props = { ...element.props };
+  let key = element.key;
+  let ref = element.ref;
+
+  // Remaining props are the new props
+  if (config != null) {
+    if (config.ref !== undefined) {
+      ref = config.ref;
+    }
+    if (config.key !== undefined) {
+      key = '' + config.key;
+    }
+
+    // Resolve default props
+    let defaultProps;
+    if (element.type && (element.type as any).defaultProps) {
+      defaultProps = (element.type as any).defaultProps;
+    }
+    for (let propName in config) {
+      if (config.hasOwnProperty(propName) &&
+          !Object.prototype.hasOwnProperty.call(config, propName)) {
+        if (config[propName] === undefined && defaultProps !== undefined) {
+          // Resolve default props
+          props[propName] = defaultProps[propName];
+        } else {
+          props[propName] = config[propName];
+        }
+      }
+    }
+  }
+
+  // Resolve new children
+  const childrenLength = children.length;
+  if (childrenLength === 1) {
+    props.children = children[0];
+  } else if (childrenLength > 1) {
+    const childArray = Array(childrenLength);
+    for (let i = 0; i < childrenLength; i++) {
+      childArray[i] = children[i];
+    }
+    props.children = childArray;
+  }
+
+  return {
+    $$typeof: REACT_ELEMENT_TYPE,
+    type: element.type,
+    key: key,
+    ref: ref,
+    props: props,
+    _owner: element._owner,
+    _store: { ...element._store },
+    _self: element._self,
+    _source: element._source,
+  };
+}
+
 export {
   type FunctionComponent,
   type ReactElement,
+  cloneElement,
   createElement,
+  isValidElement,
 }

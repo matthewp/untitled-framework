@@ -6,7 +6,6 @@ import { scheduleWork } from './scheduler.js';
 import { shouldYield } from './yield.js';
 import {
   type Fiber,
-  type FiberProps,
   Placement,
   Update,
   Deletion,
@@ -16,17 +15,25 @@ import {
   wipRoot,
   currentRoot,
   nextUnitOfWork,
+  scheduleUpdate,
   setNextUnitOfWork,
   setHookIndex,
   setCurrentRoot,
   setWipRoot,
   setWipFiber
 } from './fiber.js';
+import { isFragment, createFragment } from './fragment.js';
 
 function render(element: ReactElement, container: Element | Text) {
-  setWipRoot(createFiber(container.nodeName, { children: [element] }, container));
-  wipRoot!.alternate = currentRoot;
-  setNextUnitOfWork(wipRoot!);
+  const newFiber = createFiber(container.nodeName, { children: [element] }, container);
+  newFiber.alternate = currentRoot;
+
+  if(currentRoot) {
+    currentRoot.alternate = newFiber;
+  }
+
+  setWipRoot(newFiber);
+  setNextUnitOfWork(newFiber);
 
   scheduleWork(workLoop);
 }
@@ -46,6 +53,8 @@ function workLoop() {
 function performUnitOfWork(fiber: Fiber): Fiber | null {
   if (fiber.type && (fiber.type as any).$$typeof === Symbol.for('react.provider')) {
     updateContextProvider(fiber);
+  } else if (fiber.type === (createFragment as any)) {
+    updateFragmentComponent(fiber);
   } else if (typeof fiber.type === 'function') {
     updateFunctionComponent(fiber);
   } else {
@@ -69,7 +78,7 @@ function updateFunctionComponent(fiber: Fiber) {
   setWipFiber(fiber);
   setHookIndex(0);
   wipFiber!.hooks = [];
-  const children = [(fiber.type as Function)(fiber.props)];
+  const children = (fiber.type as Function)(fiber.props);
   reconcileChildren(fiber, children);
 }
 
@@ -92,68 +101,99 @@ function updateHostComponent(fiber: Fiber) {
   }
 }
 
-function reconcileChildren(wipFiber: Fiber, elements: (ReactElement | string)[] | ReactElement | string) {
+function updateFragmentComponent(fiber: Fiber) {
+  const children = fiber.props.children;
+  reconcileChildren(fiber, children as any);
+}
+
+type ReconciledChildrenElements = (ReactElement | string)[] | ReactElement | string;
+
+function reconcileChildren(wipFiber: Fiber, elements: ReconciledChildrenElements) {
+  if (elements == null) {
+    // If elements is null, reconcile with an empty array
+    reconcileChildrenArray(wipFiber, wipFiber.alternate?.child || null, []);
+  } else if (Array.isArray(elements)) {
+    reconcileChildrenArray(wipFiber, wipFiber.alternate?.child || null, elements);
+  } else {
+    // Handle single child
+    reconcileChildrenArray(wipFiber, wipFiber.alternate?.child || null, [elements]);
+  }
+}
+
+function reconcileChildrenArray(
+  returnFiber: Fiber,
+  currentFirstChild: Fiber | null,
+  newChildren: (ReactElement | string)[]
+): Fiber | null {
   let index = 0;
-  let oldFiber = wipFiber.alternate && wipFiber.alternate.child;
+  let oldFiber = currentFirstChild;
+  let newFiber: Fiber | null = null;
   let prevSibling: Fiber | null = null;
 
-  const normalizedElements = Array.isArray(elements) ? elements : [elements];
+  for (; index < newChildren.length; index++) {
+    const newChild = newChildren[index];
+    const isTextElement = typeof newChild === 'string' || typeof newChild === 'number';
 
-  while (index < normalizedElements.length || oldFiber != null) {
-    const element = normalizedElements[index];
-    let newFiber: Fiber | null = null;
+    if (isFragment(newChild)) {
+      // Recursively reconcile Fragment children
+      reconcileChildrenArray(returnFiber, oldFiber, newChild.props.children);
+    } else {
+      const sameType = 
+        oldFiber && 
+        ((isTextElement && oldFiber.type === 'TEXT_ELEMENT') ||
+         (!isTextElement && oldFiber.type === newChild.type));
 
-    const sameType =
-      oldFiber &&
-      element &&
-      (typeof element === 'string' ? 
-        oldFiber.type === 'TEXT_ELEMENT' :
-        element.type === oldFiber.type);
+      if (sameType) {
+        // Update the existing Fiber
+        newFiber = {
+          ...oldFiber!,
+          props: isTextElement ? { nodeValue: newChild } : newChild.props,
+          ref: (newChild as ReactElement).ref,
+          alternate: oldFiber,
+          effectTag: Update,
+        };
+      } else {
+        if (oldFiber) {
+          // Delete the old Fiber
+          oldFiber.effectTag = Deletion;
+          deletions.push(oldFiber);
+        }
+        // Create a new Fiber
+        if(isTextElement) {
+          newFiber = createFiber('TEXT_ELEMENT', { nodeValue: newChild }, null);
+        } else {
+          newFiber = createFiber(newChild.type, newChild.props, null);
+          newFiber.ref = (newChild as ReactElement).ref;
+        }
+        newFiber.effectTag = Placement;
+      }
 
-    if (sameType) {
-      newFiber = {
-        type: oldFiber!.type,
-        props: typeof element === 'string' ?
-          { nodeValue: element, children: [] } as FiberProps :
-          element.props,
-        dom: oldFiber!.dom,
-        parent: wipFiber,
-        alternate: oldFiber,
-        effectTag: Update,
-        hooks: oldFiber!.hooks,
-        child: null,
-        sibling: null,
-      };
-    }
-    if (element && !sameType) {
-      newFiber = createFiber(
-        typeof element === 'string' ? 'TEXT_ELEMENT' : element.type,
-        typeof element === 'string' ?
-          { nodeValue: element, children: [] } as FiberProps :
-          element.props
-      );
-      newFiber.effectTag = Placement;
-      newFiber.parent = wipFiber;
-    }
-    if (oldFiber && !sameType) {
-      oldFiber.effectTag = Deletion;
-      deletions.push(oldFiber);
+      newFiber.parent = returnFiber;
+
+      if (index === 0) {
+        returnFiber.child = newFiber;
+      } else if (prevSibling) {
+        prevSibling.sibling = newFiber;
+      }
+
+      prevSibling = newFiber;
     }
 
     if (oldFiber) {
       oldFiber = oldFiber.sibling;
     }
-
-    if (index === 0) {
-      wipFiber.child = newFiber;
-    } else if (element) {
-      prevSibling!.sibling = newFiber;
-    }
-
-    prevSibling = newFiber;
-    index++;
   }
+
+  // If there are more old Fibers than new children, delete the extras
+  while (oldFiber) {
+    oldFiber.effectTag = Deletion;
+    deletions.push(oldFiber);
+    oldFiber = oldFiber.sibling;
+  }
+
+  return returnFiber.child;
 }
+
 function createDom(fiber: Fiber): Element | Text | null {
   if (typeof fiber.type === 'string') {
     const dom =
@@ -168,7 +208,6 @@ function createDom(fiber: Fiber): Element | Text | null {
     return null;
   } else if (fiber.type && (fiber.type as any).$$typeof === Symbol.for('react.provider')) {
     // Context Providers don't have a direct DOM representation
-    debugger
     return null;
   } else if (fiber.type && (fiber.type as any).$$typeof === Symbol.for('react.context')) {
     // Context Consumers don't have a direct DOM representation
@@ -179,7 +218,23 @@ function createDom(fiber: Fiber): Element | Text | null {
   }
 }
 
+const setAsAttr = new Set(['style']);
+
 function updateDom(dom: Element | Text, prevProps: any, nextProps: any) {
+  switch(dom.nodeType) {
+    case 1: {
+      updateDomElement(dom as Element, prevProps, nextProps);
+      break;
+    }
+    case 3: {
+      updateDomText(dom as Text, nextProps);
+      break;
+    }
+  }
+  
+}
+
+function updateDomElement(dom: Element, prevProps: any, nextProps: any) {
   // Remove old or changed event listeners
   Object.keys(prevProps)
     .filter(isEvent)
@@ -202,7 +257,11 @@ function updateDom(dom: Element | Text, prevProps: any, nextProps: any) {
     .filter(isProperty)
     .filter(isNew(prevProps, nextProps))
     .forEach(name => {
-      (dom as any)[name] = nextProps[name];
+      if(name.startsWith('data-') || name.startsWith('aria-')) {
+        (dom as any).setAttribute(name, nextProps[name]);
+      } else {
+        (dom as any)[name] = nextProps[name];
+      }
     });
 
   // Add new event listeners
@@ -213,19 +272,118 @@ function updateDom(dom: Element | Text, prevProps: any, nextProps: any) {
       const eventType = name.toLowerCase().substring(2);
       dom.addEventListener(eventType, nextProps[name]);
     });
+
+  // Special handling for style prop
+  if ('style' in prevProps || 'style' in nextProps) {
+    const prevStyle = prevProps.style || {};
+    const nextStyle = nextProps.style || {};
+
+    // Remove old styles
+    for (let key in prevStyle) {
+      if (!(key in nextStyle)) {
+        (dom as HTMLElement).style[key as any] = '';
+      }
+    }
+
+    // Set new or changed styles
+    for (let key in nextStyle) {
+      if (prevStyle[key] !== nextStyle[key]) {
+        let value = nextStyle[key];
+        if (typeof value === 'number' && !isUnitlessNumber[key]) {
+          value = value + 'px';
+        }
+        if(key.startsWith('--')) {
+           (dom as HTMLElement).style.setProperty(key, value); 
+        } else {
+           (dom as HTMLElement).style[key as any] = value; 
+        }
+      }
+    }
+  }
 }
 
+function setRef(ref: string | ((instance: any) => void) | { current: any } | null, value: any) {
+  if (typeof ref === 'function') {
+    ref(value);
+  } else if (ref !== null && typeof ref === 'object') {
+    ref.current = value;
+  }
+}
+
+function updateDomText(dom: Text, nextProps: any) {
+  dom.nodeValue = nextProps.nodeValue;
+}
+
+const isUnitlessNumber: { [key: string]: boolean } = {
+  animationIterationCount: true,
+  borderImageOutset: true,
+  borderImageSlice: true,
+  borderImageWidth: true,
+  boxFlex: true,
+  boxFlexGroup: true,
+  boxOrdinalGroup: true,
+  columnCount: true,
+  flex: true,
+  flexGrow: true,
+  flexPositive: true,
+  flexShrink: true,
+  flexNegative: true,
+  flexOrder: true,
+  gridArea: true,
+  gridRow: true,
+  gridRowEnd: true,
+  gridRowSpan: true,
+  gridRowStart: true,
+  gridColumn: true,
+  gridColumnEnd: true,
+  gridColumnSpan: true,
+  gridColumnStart: true,
+  fontWeight: true,
+  lineClamp: true,
+  lineHeight: true,
+  opacity: true,
+  order: true,
+  orphans: true,
+  tabSize: true,
+  widows: true,
+  zIndex: true,
+  zoom: true,
+  // SVG-related properties
+  fillOpacity: true,
+  floodOpacity: true,
+  stopOpacity: true,
+  strokeDasharray: true,
+  strokeDashoffset: true,
+  strokeMiterlimit: true,
+  strokeOpacity: true,
+  strokeWidth: true,
+};
+
+let isCommitting = false;
+let pendingUpdates: Fiber[] = [];
+
 function commitRoot() {
+  isCommitting = true;
   deletions.forEach(commitWork);
   commitWork(wipRoot!.child);
   
   runLayoutEffects(wipRoot!);
-  
-  const workId = scheduleWork(() => runEffects(wipRoot!));
-  storeEffectWorkId(wipRoot!, workId);
 
-  setCurrentRoot(wipRoot);
+  const finishedWork = wipRoot!;
+  
+  const workId = scheduleWork(() => runEffects(finishedWork));
+  storeEffectWorkId(finishedWork, workId);
+
+  setCurrentRoot(finishedWork);
   setWipRoot(null);
+
+  isCommitting = false;
+
+  // Process any updates that were scheduled during the commit phase
+  while (pendingUpdates.length > 0) {
+    const update = pendingUpdates.shift();
+    scheduleUpdate(update!);
+  }
 }
 
 function commitWork(fiber: Fiber | null) {
@@ -241,8 +399,19 @@ function commitWork(fiber: Fiber | null) {
 
   if (fiber.effectTag === Placement && fiber.dom != null) {
     domParent?.appendChild(fiber.dom);
+    if (fiber.ref) {
+      setRef(fiber.ref, fiber.dom);
+    }
   } else if (fiber.effectTag === Update && fiber.dom != null) {
     updateDom(fiber.dom, fiber.alternate!.props, fiber.props);
+    if (fiber.ref !== fiber.alternate?.ref) {
+      if (fiber.alternate?.ref) {
+        setRef(fiber.alternate.ref, null);
+      }
+      if (fiber.ref) {
+        setRef(fiber.ref, fiber.dom);
+      }
+    }
   } else if (fiber.effectTag === Deletion && domParent) {
     commitDeletion(fiber, domParent);
   }
@@ -253,9 +422,29 @@ function commitWork(fiber: Fiber | null) {
 
 function commitDeletion(fiber: Fiber, domParent: Element | Text) {
   if (fiber.dom) {
-    domParent.removeChild(fiber.dom);
+    commitDeletionSingle(fiber, domParent);
   } else {
-    commitDeletion(fiber.child!, domParent);
+    // Recursively find and remove child DOM nodes
+    commitDeletionRecursive(fiber, domParent);
+  }
+}
+
+function commitDeletionSingle(fiber: Fiber, domParent: Element | Text) {
+  if (fiber.ref) {
+    setRef(fiber.ref, null);
+  }
+  domParent.removeChild(fiber.dom!);
+}
+
+function commitDeletionRecursive(fiber: Fiber, domParent: Element | Text) {
+  if (fiber.dom) {
+    commitDeletionSingle(fiber, domParent);
+  } else if (fiber.child) {
+    commitDeletionRecursive(fiber.child, domParent);
+  }  
+  // After processing the child, move to the sibling
+  if (fiber.sibling) {
+    commitDeletionRecursive(fiber.sibling, domParent);
   }
 }
 
@@ -337,5 +526,7 @@ function storeEffectWorkId(fiber: Fiber, workId: number) {
 }
 
 export {
+  isCommitting,
+  pendingUpdates,
   render
 };
