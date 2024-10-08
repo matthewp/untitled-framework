@@ -433,7 +433,8 @@ function commitDeletionSingle(fiber: Fiber, domParent: Element | Text) {
   if (fiber.ref) {
     setRef(fiber.ref, null);
   }
-  domParent.removeChild(fiber.dom!);
+  if(fiber.dom!.parentNode)
+    domParent.removeChild(fiber.dom!);
 }
 
 function commitDeletionRecursive(fiber: Fiber, domParent: Element | Text) {

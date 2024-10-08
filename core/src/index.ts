@@ -18,7 +18,16 @@ const Framework = {
   Children,
   createElement,
   forwardRef,
-  createContext
+  createContext,
+
+  useEffect,
+  useCallback,
+  useState,
+  useLayoutEffect,
+  useMemo,
+  useContext,
+  useReducer,
+  useRef
 };
 
 export {
