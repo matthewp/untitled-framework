@@ -23,6 +23,7 @@ import {
   setWipFiber
 } from './fiber.js';
 import { isFragment, createFragment } from './fragment.js';
+import { isSVG, NS as SVG_NS } from './svg.js';
 
 function render(element: ReactElement, container: Element | Text) {
   const newFiber = createFiber(container.nodeName, { children: [element] }, container);
@@ -45,9 +46,9 @@ function workLoop() {
 
   if (!nextUnitOfWork && wipRoot) {
     commitRoot();
+  } else if(nextUnitOfWork) {
+    scheduleWork(workLoop);
   }
-
-  requestIdleCallback(workLoop);
 }
 
 function performUnitOfWork(fiber: Fiber): Fiber | null {
@@ -199,7 +200,9 @@ function createDom(fiber: Fiber): Element | Text | null {
     const dom =
       fiber.type === 'TEXT_ELEMENT'
         ? document.createTextNode('')
-        : document.createElement(fiber.type);
+        : isSVG(fiber.type)
+          ? document.createElementNS(SVG_NS, fiber.type)
+          : document.createElement(fiber.type);
 
     updateDom(dom, {}, fiber.props);
     return dom;
@@ -217,8 +220,6 @@ function createDom(fiber: Fiber): Element | Text | null {
     return null;
   }
 }
-
-const setAsAttr = new Set(['style']);
 
 function updateDom(dom: Element | Text, prevProps: any, nextProps: any) {
   switch(dom.nodeType) {
@@ -257,10 +258,25 @@ function updateDomElement(dom: Element, prevProps: any, nextProps: any) {
     .filter(isProperty)
     .filter(isNew(prevProps, nextProps))
     .forEach(name => {
+      const value = nextProps[name];
+      switch(name) {
+        case 'className': {
+          setAttr(dom, 'class', value);
+          return;
+        }
+        case 'width':
+        case 'height':
+        case 'viewBox':
+        case 'd': {
+          setAttr(dom, name, value);
+          return;
+        }
+      }
+    
       if(name.startsWith('data-') || name.startsWith('aria-')) {
-        (dom as any).setAttribute(name, nextProps[name]);
+        setAttr(dom, name, value);
       } else {
-        (dom as any)[name] = nextProps[name];
+        (dom as any)[name] = value;
       }
     });
 
@@ -300,6 +316,10 @@ function updateDomElement(dom: Element, prevProps: any, nextProps: any) {
       }
     }
   }
+}
+
+function setAttr(dom: Element, key: string, value: any) {
+  dom.setAttribute(key, value);
 }
 
 function setRef(ref: string | ((instance: any) => void) | { current: any } | null, value: any) {
