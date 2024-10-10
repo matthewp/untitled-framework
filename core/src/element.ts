@@ -142,8 +142,7 @@ function cloneElement(
       defaultProps = (element.type as any).defaultProps;
     }
     for (let propName in config) {
-      if (config.hasOwnProperty(propName) &&
-          !Object.prototype.hasOwnProperty.call(config, propName)) {
+      if (config.hasOwnProperty(propName) && !props.hasOwnProperty(propName)) {
         if (config[propName] === undefined && defaultProps !== undefined) {
           // Resolve default props
           props[propName] = defaultProps[propName];
