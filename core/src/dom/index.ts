@@ -1,4 +1,4 @@
-import { render as performRender } from './reconcile';
+import { render as performRender } from '../reconcile.js';
 
 function render(element: any, container: any) {
   performRender(element, container);

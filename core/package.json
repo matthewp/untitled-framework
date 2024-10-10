@@ -13,8 +13,12 @@
      "default": "./dist/index.js"
     },
     "./dom": {
-      "typescript": "./src/dom.ts",
-      "default": "./dist/dom.js"
+      "typescript": "./src/dom/index.ts",
+      "default": "./dist/dom/index.js"
+    },
+    "./dom/client": {
+      "typescript": "./src/dom/client.ts",
+      "default": "./dist/dom/client.js"
     },
     "./jsx-runtime": {
       "typescript": "./src/jsx-runtime.ts",

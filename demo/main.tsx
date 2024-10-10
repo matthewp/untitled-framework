@@ -2,7 +2,7 @@ import './style.css';
 import "@radix-ui/themes/styles.css";
 import { Flex, Theme, Text, Button } from "@radix-ui/themes";
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { render } from 'react-dom'
+import { createRoot } from 'react-dom/client'
 import Toolbar from './src/Toolbar';
 
 function Counter() {
@@ -43,26 +43,8 @@ function ComplexApp() {
   )
 }
 
-function EffectApp() {
-  const [val] = useState('value');
-  const [other, setOther] = useState('other');
-  useEffect(() => {
-    console.log('In the effect');
-    setOther('other2');
-  }, [val]);
-  return (
-    <div>Value: {val}</div>
-  )
-}
-
-function OuterApp() {
-  return (
-    <div>
-      <EffectApp />
-    </div>
-  );
-}
-
 let dom = <RadixApp />;
 
-render(dom, document.querySelector('#app'));
+const container = document.querySelector('#app');
+const root = createRoot(container);
+root.render(dom);
