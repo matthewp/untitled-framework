@@ -1,7 +1,7 @@
 import './style.css';
 import "@radix-ui/themes/styles.css";
 import { Flex, Theme, Text, Button } from "@radix-ui/themes";
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { render } from 'react-dom'
 import Toolbar from './src/Toolbar';
 
@@ -16,27 +16,53 @@ function Counter() {
   );
 }
 
-function App() {
+function RadixApp() {
+  const [count, setCount] = useState(0);
   return (
-  	<Flex direction="column" gap="2">
-			<Text>Hello from Radix Themes :)</Text>
-			<Button>Let's go</Button>
-		</Flex>
+    <Theme accentColor="crimson" grayColor="sand" radius="large" scaling="95%">
+    	<Flex direction="column" gap="2">
+  			<Text>Hello from Radix Themes :)</Text>
+  			<Button onClick={() => setCount(count + 1)}>Let's go {count}</Button>
+        <Toolbar />
+  		</Flex>
+    </Theme>
   );
 }
 
-let dom = (
-  <Theme accentColor="crimson" grayColor="sand" radius="large" scaling="95%">
-  	<App />
-    <Toolbar />
-  </Theme> 
-);
+function ComplexApp() {
+  const [name, setName] = useState('');
+  return (
+    <div>
+      <div>Name: {name}</div>
+      <input type="text" onChange={ev => {
+        setName(ev.target.value);
+      }} />
+      <br />
+      <Counter />      
+    </div>
+  )
+}
 
-dom = (
-  <>
-    <App />
-    <Toolbar />
-  </>
-)
+function EffectApp() {
+  const [val] = useState('value');
+  const [other, setOther] = useState('other');
+  useEffect(() => {
+    console.log('In the effect');
+    setOther('other2');
+  }, [val]);
+  return (
+    <div>Value: {val}</div>
+  )
+}
+
+function OuterApp() {
+  return (
+    <div>
+      <EffectApp />
+    </div>
+  );
+}
+
+let dom = <RadixApp />;
 
 render(dom, document.querySelector('#app'));

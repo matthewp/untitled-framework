@@ -4,7 +4,8 @@ import type {
   ReactElement
 } from './element.js';
 import type { Context } from './context.js';
-import { isCommitting, pendingUpdates } from './reconcile.js';
+import { isCommitting, pendingUpdates, workLoop } from './reconcile.js';
+import { scheduleWork } from './scheduler.js';
 
 // Effect tags
 const Placement = 'PLACEMENT';
@@ -62,10 +63,13 @@ function scheduleUpdate(fiber: Fiber) {
   if(isCommitting) {
     pendingUpdates.push(fiber);
   } else {
-    wipRoot = createFiber(currentRoot!.type, currentRoot!.props, currentRoot!.dom);
-    wipRoot.alternate = currentRoot;
-    nextUnitOfWork = wipRoot;
-    deletions = [];
+    let wipFiber = createFiber(fiber.type, fiber.props, fiber.dom);
+    wipFiber.alternate = fiber;
+    wipFiber.effectTag = Update;
+    pendingUpdates.push(wipFiber);
+    fiber.alternate = wipFiber;
+
+    scheduleWork(workLoop);
   }
 }
 

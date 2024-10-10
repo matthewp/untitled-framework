@@ -2,7 +2,7 @@ import type {
   ReactElement
 } from './element.js';
 import type { ProviderType } from './context.js';
-import { scheduleWork } from './scheduler.js';
+import { scheduleWork, workPending } from './scheduler.js';
 import { shouldYield } from './yield.js';
 import {
   type Fiber,
@@ -40,6 +40,13 @@ function render(element: ReactElement, container: Element | Text) {
 }
 
 function workLoop() {
+  // If there's no current unit of work, grab pending things.
+  if(!nextUnitOfWork && pendingUpdates.length > 0) {
+    setWipRoot(pendingUpdates.shift()!);
+    setNextUnitOfWork(wipRoot);
+    deletions.length = 0;
+  }
+  
   while (nextUnitOfWork && !shouldYield()) {
     setNextUnitOfWork(performUnitOfWork(nextUnitOfWork));
   }
@@ -235,13 +242,21 @@ function updateDom(dom: Element | Text, prevProps: any, nextProps: any) {
   
 }
 
+function getEventTypeFromProp(dom: Element, prop: string) {
+  const eventType = prop.toLowerCase().substring(2);
+  if(eventType === 'change' && dom.localName === 'input') {
+    return 'input';
+  }
+  return eventType;
+}
+
 function updateDomElement(dom: Element, prevProps: any, nextProps: any) {
   // Remove old or changed event listeners
   Object.keys(prevProps)
     .filter(isEvent)
     .filter(key => !(key in nextProps) || isNew(prevProps, nextProps)(key))
     .forEach(name => {
-      const eventType = name.toLowerCase().substring(2);
+      const eventType = getEventTypeFromProp(dom, name);
       dom.removeEventListener(eventType, prevProps[name]);
     });
 
@@ -285,7 +300,7 @@ function updateDomElement(dom: Element, prevProps: any, nextProps: any) {
     .filter(isEvent)
     .filter(isNew(prevProps, nextProps))
     .forEach(name => {
-      const eventType = name.toLowerCase().substring(2);
+      const eventType = getEventTypeFromProp(dom, name);
       dom.addEventListener(eventType, nextProps[name]);
     });
 
@@ -400,9 +415,9 @@ function commitRoot() {
   isCommitting = false;
 
   // Process any updates that were scheduled during the commit phase
-  while (pendingUpdates.length > 0) {
-    const update = pendingUpdates.shift();
-    scheduleUpdate(update!);
+  if (pendingUpdates.length > 0 && !workPending()) {
+    // Schedule work only if there's not already something in the scheduler.
+    scheduleWork(workLoop);
   }
 }
 
@@ -415,7 +430,7 @@ function commitWork(fiber: Fiber | null) {
   while (domParentFiber && !domParentFiber.dom) {
     domParentFiber = domParentFiber.parent;
   }
-  const domParent = domParentFiber!.dom;
+  const domParent = domParentFiber?.dom;
 
   if (fiber.effectTag === Placement && fiber.dom != null) {
     domParent?.appendChild(fiber.dom);
@@ -438,6 +453,7 @@ function commitWork(fiber: Fiber | null) {
 
   commitWork(fiber.child);
   commitWork(fiber.sibling);
+  fiber.alternate = fiber;
 }
 
 function commitDeletion(fiber: Fiber, domParent: Element | Text) {
@@ -487,19 +503,23 @@ function runLayoutEffects(fiber: Fiber) {
   if (fiber.hooks) {
     fiber.hooks.forEach((hook) => {
       if (hook.tag === 'layout-effect') {
-        if (hook.cleanup) {
-          hook.cleanup();
-        }
-        const cleanup = hook.effect();
-        if (typeof cleanup === 'function') {
-          hook.cleanup = cleanup;
+        if (!areHookInputsEqual(hook.deps, hook.lastDeps)) {
+          if (hook.cleanup) {
+            hook.cleanup();
+          }
+          const cleanup = hook.effect();
+          if (typeof cleanup === 'function') {
+            hook.cleanup = cleanup;
+          } 
         }
       } else if (hook.tag === 'imperative-handle') {
-        const value = hook.create();
-        if (typeof hook.ref === 'function') {
-          hook.ref(value);
-        } else if (hook.ref !== null) {
-          hook.ref.current = value;
+        if (!areHookInputsEqual(hook.deps, hook.lastDeps)) {
+          const value = hook.create();
+          if (typeof hook.ref === 'function') {
+            hook.ref(value);
+          } else if (hook.ref !== null) {
+            hook.ref.current = value;
+          }
         }
       }
     });
@@ -509,18 +529,41 @@ function runLayoutEffects(fiber: Fiber) {
   runLayoutEffects(fiber.sibling!);
 }
 
+function areHookInputsEqual(nextDeps: any[] | undefined, prevDeps: any[] | undefined): boolean {
+  if (prevDeps === undefined || nextDeps === undefined) {
+    return false;
+  }
+  if (prevDeps.length !== nextDeps.length) {
+    return false;
+  }
+  for (let i = 0; i < prevDeps.length; i++) {
+    if (!Object.is(nextDeps[i], prevDeps[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function runEffects(fiber: Fiber) {
   if (!fiber) return;
 
   if (fiber.hooks) {
     fiber.hooks.forEach((hook) => {
       if (hook.tag === 'effect') {
-        if (hook.cleanup) {
-          hook.cleanup();
-        }
-        const cleanup = hook.effect();
-        if (typeof cleanup === 'function') {
-          hook.cleanup = cleanup;
+        if (!areHookInputsEqual(hook.deps, hook.lastDeps)) {
+          // Clean up previous effect if it exists
+          if (hook.cleanup) {
+            hook.cleanup();
+          }
+          
+          // Run the effect and store any returned cleanup function
+          const cleanup = hook.effect();
+          if (typeof cleanup === 'function') {
+            hook.cleanup = cleanup;
+          }
+          
+          // Update lastDeps
+          hook.lastDeps = hook.deps;
         }
         hook.workId = undefined;
       }
@@ -549,5 +592,6 @@ function storeEffectWorkId(fiber: Fiber, workId: number) {
 export {
   isCommitting,
   pendingUpdates,
-  render
+  render,
+  workLoop
 };

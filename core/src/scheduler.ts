@@ -52,6 +52,10 @@ const scheduler = (function() {
     cancelAllWork(): void {
       callbacks = [];
       pending = false;
+    },
+
+    isPending() {
+      return pending;
     }
   };
 })();
@@ -60,3 +64,4 @@ const scheduler = (function() {
 export const scheduleWork = scheduler.scheduleWork;
 export const cancelWork = scheduler.cancelWork;
 export const cancelAllWork = scheduler.cancelAllWork;
+export const workPending = scheduler.isPending;

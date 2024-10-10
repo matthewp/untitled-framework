@@ -1,5 +1,5 @@
 import type { Context } from './context.js';
-import { hookIndex, wipFiber, scheduleUpdate, setHookIndex } from './fiber.js';
+import { wipRoot, hookIndex, wipFiber, scheduleUpdate, setHookIndex } from './fiber.js';
 import { Ref } from './ref.js';
 
 // Hook types
@@ -8,6 +8,7 @@ interface EffectHook {
   effect: () => void | (() => void);
   cleanup: (() => void) | undefined;
   deps: any[] | undefined;
+  lastDeps: any[] | undefined;
   workId: number | undefined;
 }
 
@@ -16,6 +17,7 @@ interface LayoutEffectHook {
   effect: () => void | (() => void);
   cleanup: (() => void) | undefined;
   deps: any[] | undefined;
+  lastDeps: any[] | undefined;
 }
 
 interface ReducerHook<S, A> {
@@ -29,6 +31,7 @@ interface ImperativeHandleHook<T> {
   ref: Ref<T>;
   create: () => T;
   deps: any[] | undefined;
+  lastDeps: any[] | undefined;
 }
 
 interface IdHook {
@@ -86,11 +89,12 @@ function useReducer<S, A>(
     dispatch: null as any
   }));
 
+  const currentFiber = wipFiber!;
   hook.dispatch = (action: A) => {
     const newState = reducer(hook.state, action);
     if (newState !== hook.state) {
       hook.state = newState;
-      scheduleUpdate(wipFiber!);
+      scheduleUpdate(currentFiber);
     }
   };
 
@@ -99,23 +103,35 @@ function useReducer<S, A>(
 
 // useEffect
 function useEffect(effect: () => void | (() => void), deps?: any[]) {
-  baseHook(() => ({
-    tag: 'effect' as const,
+  const oldHook = wipFiber?.alternate?.hooks?.[hookIndex] as EffectHook | undefined;
+  
+  const hook: EffectHook = {
+    tag: 'effect',
     effect,
     cleanup: undefined,
     deps,
-    workId: undefined
-  }));
+    lastDeps: oldHook?.deps,
+    workId: undefined,
+  };
+
+  wipFiber!.hooks!.push(hook);
+  setHookIndex(hookIndex + 1);
 }
 
 // useLayoutEffect
 function useLayoutEffect(effect: () => void | (() => void), deps?: any[]) {
-  baseHook(() => ({
-    tag: 'layout-effect' as const,
+  const oldHook = wipFiber?.alternate?.hooks?.[hookIndex] as LayoutEffectHook | undefined;
+  
+  const hook: LayoutEffectHook = {
+    tag: 'layout-effect',
     effect,
     cleanup: undefined,
-    deps
-  }));
+    deps,
+    lastDeps: oldHook?.deps,
+  };
+
+  wipFiber!.hooks!.push(hook);
+  setHookIndex(hookIndex + 1);
 }
 
 // useImperativeHandle
@@ -124,21 +140,18 @@ function useImperativeHandle<T, R extends T>(
   create: () => R,
   deps?: any[]
 ): void {
-  baseHook(() => ({
-    tag: 'imperative-handle' as const,
+  const oldHook = wipFiber?.alternate?.hooks?.[hookIndex] as ImperativeHandleHook<T> | undefined;
+  
+  const hook: ImperativeHandleHook<T> = {
+    tag: 'imperative-handle',
     ref,
     create,
-    deps
-  }));
+    deps,
+    lastDeps: oldHook?.deps,
+  };
 
-  useLayoutEffect(() => {
-    const value = create();
-    if (typeof ref === 'function') {
-      ref(value);
-    } else if (ref !== null) {
-      ref.current = value;
-    }
-  }, deps);
+  wipFiber!.hooks!.push(hook);
+  setHookIndex(hookIndex + 1);
 }
 
 // useId
